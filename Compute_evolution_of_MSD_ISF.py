@@ -5,14 +5,32 @@ import sys
 sys.path.append('/home/hcleroy/PostDoc/aging_condensates/Simulation/Gillespie/Gillespie_backend/')
 sys.path.append('/home/hugo/PostDoc/aging_condensates/Gillespie/Gillespie_backend/')
 import Gillespie_backend as gil
+def Compute_Average_ISF(current_positions, initial_positions, q_vectors):
+    """
+    Compute the direction-averaged ISF for a given q magnitude.
+    :param current_positions: Current positions of particles (Nx3 array).
+    :param initial_positions: Initial positions of particles (Nx3 array).
+    :param q_magnitude: Magnitude of the wave vector q.
+    :param num_q_samples: Number of q vector samples for averaging.
+    """
+    N = len(current_positions)
+    displacement = current_positions - initial_positions  # Nx3 array of displacements
 
+    # Calculate the exponential term for each q vector and displacement
+    exp_terms = np.exp(1j * np.dot(displacement, q_vectors.T))  # Nxnum_q_samples array
+
+    # Average over all particles and q vectors
+    average_isf = np.mean(exp_terms, axis=(0, 1))
+    return average_isf
 def compute_MSD(gillespie, output, step_tot, check_steps):
     """
     Compute the Mean Squared Displacement (MSD) over the simulation.
+    param : step_tot : total number of steps in the simulation
+    param : check_steps : steps interval between two reset of the MSD starting point
     """
     msd_time = np.zeros((step_tot // check_steps, check_steps, 2), dtype=float)
     msd_tot = np.zeros((step_tot, 2), dtype=float)
-    abs_time = 0.0
+    time_shift = 0.0
     sim_initial_position = gillespie.get_r(periodic=True)
     index_tot = 0  # Changed from float to int for proper indexing
     
@@ -21,12 +39,12 @@ def compute_MSD(gillespie, output, step_tot, check_steps):
         current_time = 0.0
         
         for step in range(check_steps):
-            move, dt = gillespie.evolve()
+            _, dt = gillespie.evolve()
             current_time += dt[0]
-            abs_time += dt[0]
             msd_time[i, step] = [current_time, np.mean(np.linalg.norm(gillespie.get_r(periodic=True) - initial_positions, axis=1)**2)]
-            msd_tot[index_tot] = [abs_time, np.mean(np.linalg.norm(gillespie.get_r(periodic=True) - sim_initial_position, axis=1)**2)]
+            msd_tot[index_tot] = [time_shift+current_time, np.mean(np.linalg.norm(gillespie.get_r(periodic=True) - sim_initial_position, axis=1)**2)]
             index_tot += 1
+        time_shift += current_time
     
     output.put(('create_array', ('/Evolution_of_MSD', 'MSD_' + hex(gillespie.seed), msd_time)))
     output.put(('create_array', ('/MSD_tot', 'MSD_tot' + hex(gillespie.seed), msd_tot)))
